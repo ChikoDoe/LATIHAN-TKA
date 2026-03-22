@@ -1,7 +1,6 @@
 require("dotenv").config();
 const express = require("express");
 const Database = require("better-sqlite3");
-const path = require("path");
 
 const app = express();
 app.use(express.json());
@@ -58,7 +57,7 @@ Level:
 - Level 3 = Penalaran
 
 Respons HANYA JSON valid, tanpa markdown, tanpa backtick, tanpa komentar apapun.
-Format:
+Format persis:
 {"elemen":"...","level":1,"levelLabel":"Pengetahuan dan Pemahaman","soal":"...","opsi":["A. ...","B. ...","C. ...","D. ..."],"jawaban":0,"pembahasan":"..."}
 - jawaban: index 0-3 dari opsi benar
 - Gunakan unicode: ², ³, √, ×, ÷, ≤, ≥, π, °
@@ -143,6 +142,8 @@ app.post("/api/generate", async (req, res) => {
 
   for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
     try {
+      console.log(`[GEN] soal=${index} elemen=${elemen} level=${level} attempt=${attempt + 1}`);
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -158,33 +159,69 @@ app.post("/api/generate", async (req, res) => {
         }),
       });
 
-      // Rate limited — tunggu lalu retry
+      // Rate limited — baca retry-after header lalu tunggu
       if (response.status === 429) {
         const retryAfter = response.headers.get("retry-after");
         const wait = retryAfter ? parseInt(retryAfter) * 1000 : (attempt + 1) * 3000;
-        console.warn(`[429] Rate limited soal ${index}, tunggu ${wait}ms (attempt ${attempt+1})`);
+        console.warn(`[429] rate limited soal=${index}, tunggu ${wait}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
 
-      if (!response.ok) {
+      // Error 5xx dari Anthropic — retry
+      if (response.status >= 500) {
         const errText = await response.text();
-        return res.status(response.status).json({ error: "API error", detail: errText });
+        console.error(`[5xx] status=${response.status} soal=${index}:`, errText.substring(0, 200));
+        lastErr = new Error(`HTTP ${response.status}`);
+        await new Promise(r => setTimeout(r, (attempt + 1) * 2000));
+        continue;
       }
 
+      // Error 4xx lain (401, 400, dll) — tidak perlu retry
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[4xx] status=${response.status} soal=${index}:`, errText.substring(0, 300));
+        return res.status(response.status).json({ error: `API error ${response.status}`, detail: errText });
+      }
+
+      // Parse response — ikut struktur dari docs Anthropic
       const data = await response.json();
-      const raw = data.content.map(b => b.text || "").join("");
+      console.log(`[RESP] soal=${index} stop_reason=${data.stop_reason} blocks=${data.content?.length}`);
+
+      // Ambil semua text block
+      const textBlocks = (data.content || []).filter(b => b.type === "text");
+      if (textBlocks.length === 0) {
+        console.error(`[EMPTY] soal=${index} tidak ada text block. stop_reason=${data.stop_reason}`);
+        lastErr = new Error("Response kosong dari API");
+        await new Promise(r => setTimeout(r, 1000));
+        continue;
+      }
+
+      const raw = textBlocks.map(b => b.text).join("").trim();
       const clean = raw.replace(/```json|```/g, "").trim();
-      const question = JSON.parse(clean);
+
+      // Parse JSON
+      let question;
+      try {
+        question = JSON.parse(clean);
+      } catch (parseErr) {
+        console.error(`[PARSE] soal=${index} gagal parse JSON:`, parseErr.message);
+        console.error(`[PARSE] raw text:`, clean.substring(0, 300));
+        lastErr = parseErr;
+        await new Promise(r => setTimeout(r, 500));
+        continue;
+      }
+
       return res.json({ question });
 
     } catch (err) {
       lastErr = err;
-      console.error(`Generate error attempt ${attempt+1}:`, err.message);
+      console.error(`[ERR] soal=${index} attempt=${attempt + 1}:`, err.message);
       if (attempt < MAX_RETRY - 1) await new Promise(r => setTimeout(r, 1000));
     }
   }
 
+  console.error(`[FAIL] soal=${index} gagal setelah ${MAX_RETRY} attempt:`, lastErr?.message);
   res.status(500).json({ error: lastErr?.message || "Max retry exceeded" });
 });
 
