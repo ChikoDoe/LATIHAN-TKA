@@ -10,7 +10,7 @@ app.use(express.static("public"));
 const API_PROVIDER       = (process.env.API_PROVIDER || "anthropic").toLowerCase();
 const ANTHROPIC_KEY      = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_BASE_URL = (process.env.ANTHROPIC_BASE_URL || "https://api.anthropic.com").replace(/\/$/, "");
-const ANTHROPIC_MODEL    = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5-20251001";
+const ANTHROPIC_MODEL    = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 const OPENAI_KEY         = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL    = (process.env.OPENAI_BASE_URL || "https://api.openai.com").replace(/\/$/, "");
 const OPENAI_MODEL       = process.env.OPENAI_MODEL || "gpt-4o-mini";
