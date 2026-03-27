@@ -16,7 +16,7 @@ const OPENAI_KEY         = process.env.OPENAI_API_KEY;
 const OPENAI_BASE_URL    = (process.env.OPENAI_BASE_URL || "https://api.openai.com").replace(/\/$/, "");
 const OPENAI_MODEL       = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const SALT_ROUNDS        = 10;
-const SESSION_DURATION   = 90 * 60; // 90 menit dalam detik
+const SESSION_DURATION   = 80 * 60; // 90 menit dalam detik
 
 if (API_PROVIDER === "anthropic" && !ANTHROPIC_KEY) { console.error("[CONFIG] ERROR: ANTHROPIC_API_KEY tidak diset"); process.exit(1); }
 if (API_PROVIDER === "openai"    && !OPENAI_KEY)    { console.error("[CONFIG] ERROR: OPENAI_API_KEY tidak diset");    process.exit(1); }
